@@ -8,7 +8,7 @@ import AddJobPage from "./pages/AddJobPage";
 import EditJobPage from "./pages/EditJobPage";
 import JobDetailsPage from "./pages/JobDetailsPage";
 
-const API_URL = "http://localhost:3000/jobs";
+
 
 function App() {
   const [jobs, setJobs] = useState([]);
@@ -17,7 +17,7 @@ function App() {
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(API_URL);
+      const res = await fetch("http://localhost:3000/jobs");
       const data = await res.json();
       setJobs(data);
     } catch (err) {
@@ -33,7 +33,7 @@ function App() {
 
   const addJob = useCallback(async (job) => {
     try {
-      const res = await fetch(API_URL, {
+      const res = await fetch("http://localhost:3000/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(job),
@@ -53,7 +53,7 @@ function App() {
 
   const updateJob = useCallback(async (id, updatedFields) => {
     try {
-      const res = await fetch(`${API_URL}/${id}`, {
+      const res = await fetch(`http://localhost:3000/jobs/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedFields),
@@ -69,7 +69,7 @@ function App() {
 
   const deleteJob = useCallback(async (id) => {
     try {
-      await fetch(`${API_URL}/${id}`, { method: "DELETE" });
+      await fetch(`http://localhost:3000/jobs/${id}`, { method: "DELETE" });
       setJobs((prev) => prev.filter((j) => String(j.id) !== String(id)));
     } catch (err) {
       console.error("Failed to delete job:", err);

@@ -11,99 +11,49 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo 'Checking out source code...'
-
                 checkout scm
             }
         }
 
-        stage('Check Node & NPM') {
+        stage('Install') {
             steps {
-                sh '''
-                    echo "Node version:"
-                    node --version
-
-                    echo "NPM version:"
-                    npm --version
-                '''
+                sh 'npm ci --no-audit --no-fund'
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Build') {
             steps {
-                echo 'Installing React dependencies...'
-
-                sh '''
-                    npm ci
-                '''
+                sh 'npm run build'
             }
         }
 
-        stage('Build React Application') {
+        stage('Deploy') {
             steps {
-                echo 'Building React application...'
-
-                sh '''
-                    npm run build
-                '''
-            }
-        }
-
-        stage('Verify Build') {
-            steps {
-                sh '''
-                    if [ ! -d "dist" ]; then
-                        echo "ERROR: dist folder was not created."
-                        exit 1
-                    fi
-
-                    echo "Build successful."
-                    echo "Build contents:"
-                    ls -lah dist
-                '''
-            }
-        }
-
-        stage('Deploy to Server') {
-            steps {
-                sshagent(credentials: ['test-pinint-server']) {
-
+                sshagent(['test-pinint-server']) {
                     sh '''
                         set -e
 
-                        echo "======================================"
-                        echo "Deploying to server"
-                        echo "Server: ${SERVER_IP}"
-                        echo "User: ${SERVER_USER}"
-                        echo "Path: ${DEPLOY_PATH}"
-                        echo "======================================"
-
-                        echo "Testing SSH connection..."
-
+                        echo "Testing SSH..."
                         ssh -o StrictHostKeyChecking=no \
                             ${SERVER_USER}@${SERVER_IP} \
-                            "echo SSH connection successful"
+                            "echo SSH OK"
 
                         echo "Creating deployment directory..."
-
                         ssh -o StrictHostKeyChecking=no \
                             ${SERVER_USER}@${SERVER_IP} \
                             "sudo mkdir -p ${DEPLOY_PATH}"
 
-                        echo "Removing old application..."
-
+                        echo "Removing old files..."
                         ssh -o StrictHostKeyChecking=no \
                             ${SERVER_USER}@${SERVER_IP} \
                             "sudo rm -rf ${DEPLOY_PATH}/*"
 
-                        echo "Uploading new React build..."
-
+                        echo "Uploading React build..."
                         scp -o StrictHostKeyChecking=no -r \
                             dist/. \
                             ${SERVER_USER}@${SERVER_IP}:${DEPLOY_PATH}/
 
-                        echo "Setting permissions..."
-
+                        echo "Fixing permissions..."
                         ssh -o StrictHostKeyChecking=no \
                             ${SERVER_USER}@${SERVER_IP} \
                             "sudo chown -R www-data:www-data ${DEPLOY_PATH}"
@@ -113,20 +63,16 @@ pipeline {
                             "sudo chmod -R 755 ${DEPLOY_PATH}"
 
                         echo "Testing Nginx..."
-
                         ssh -o StrictHostKeyChecking=no \
                             ${SERVER_USER}@${SERVER_IP} \
                             "sudo nginx -t"
 
                         echo "Reloading Nginx..."
-
                         ssh -o StrictHostKeyChecking=no \
                             ${SERVER_USER}@${SERVER_IP} \
                             "sudo systemctl reload nginx"
 
-                        echo "======================================"
                         echo "DEPLOYMENT SUCCESSFUL"
-                        echo "======================================"
                     '''
                 }
             }
@@ -134,26 +80,12 @@ pipeline {
     }
 
     post {
-
         success {
-            echo '''
-========================================
-        DEPLOYMENT SUCCESSFUL
-========================================
-
-Website:
-https://test.pinint.com
-'''
+            echo 'Successfully deployed to test.pinint.com'
         }
 
         failure {
-            echo '''
-========================================
-          DEPLOYMENT FAILED
-========================================
-
-Check the Console Output above.
-'''
+            echo 'Deployment failed'
         }
     }
 }

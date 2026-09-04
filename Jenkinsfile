@@ -2,93 +2,158 @@ pipeline {
     agent any
 
     environment {
-        PROJECT_PATH = "/var/lib/jenkins/workspace/test-pinint"
-        DEPLOY_PATH  = "/var/www/test.pinint.com"
-        PORT         = "30000"
+        SERVER_IP   = "204.12.199.185"
+        SERVER_USER = "administrator"
+        DEPLOY_PATH = "/var/www/test.pinint.com"
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                echo "Checking out code..."
+                echo 'Checking out source code...'
 
                 checkout scm
             }
         }
 
+        stage('Check Node & NPM') {
+            steps {
+                sh '''
+                    echo "Node version:"
+                    node --version
+
+                    echo "NPM version:"
+                    npm --version
+                '''
+            }
+        }
+
         stage('Install Dependencies') {
             steps {
-                dir("${PROJECT_PATH}") {
+                echo 'Installing React dependencies...'
+
+                sh '''
+                    npm ci
+                '''
+            }
+        }
+
+        stage('Build React Application') {
+            steps {
+                echo 'Building React application...'
+
+                sh '''
+                    npm run build
+                '''
+            }
+        }
+
+        stage('Verify Build') {
+            steps {
+                sh '''
+                    if [ ! -d "dist" ]; then
+                        echo "ERROR: dist folder was not created."
+                        exit 1
+                    fi
+
+                    echo "Build successful."
+                    echo "Build contents:"
+                    ls -lah dist
+                '''
+            }
+        }
+
+        stage('Deploy to Server') {
+            steps {
+                sshagent(credentials: ['test-pinint-server']) {
+
                     sh '''
-                        echo "Installing dependencies..."
-                        npm ci
+                        set -e
+
+                        echo "======================================"
+                        echo "Deploying to server"
+                        echo "Server: ${SERVER_IP}"
+                        echo "User: ${SERVER_USER}"
+                        echo "Path: ${DEPLOY_PATH}"
+                        echo "======================================"
+
+                        echo "Testing SSH connection..."
+
+                        ssh -o StrictHostKeyChecking=no \
+                            ${SERVER_USER}@${SERVER_IP} \
+                            "echo SSH connection successful"
+
+                        echo "Creating deployment directory..."
+
+                        ssh -o StrictHostKeyChecking=no \
+                            ${SERVER_USER}@${SERVER_IP} \
+                            "sudo mkdir -p ${DEPLOY_PATH}"
+
+                        echo "Removing old application..."
+
+                        ssh -o StrictHostKeyChecking=no \
+                            ${SERVER_USER}@${SERVER_IP} \
+                            "sudo rm -rf ${DEPLOY_PATH}/*"
+
+                        echo "Uploading new React build..."
+
+                        scp -o StrictHostKeyChecking=no -r \
+                            dist/. \
+                            ${SERVER_USER}@${SERVER_IP}:${DEPLOY_PATH}/
+
+                        echo "Setting permissions..."
+
+                        ssh -o StrictHostKeyChecking=no \
+                            ${SERVER_USER}@${SERVER_IP} \
+                            "sudo chown -R www-data:www-data ${DEPLOY_PATH}"
+
+                        ssh -o StrictHostKeyChecking=no \
+                            ${SERVER_USER}@${SERVER_IP} \
+                            "sudo chmod -R 755 ${DEPLOY_PATH}"
+
+                        echo "Testing Nginx..."
+
+                        ssh -o StrictHostKeyChecking=no \
+                            ${SERVER_USER}@${SERVER_IP} \
+                            "sudo nginx -t"
+
+                        echo "Reloading Nginx..."
+
+                        ssh -o StrictHostKeyChecking=no \
+                            ${SERVER_USER}@${SERVER_IP} \
+                            "sudo systemctl reload nginx"
+
+                        echo "======================================"
+                        echo "DEPLOYMENT SUCCESSFUL"
+                        echo "======================================"
                     '''
                 }
-            }
-        }
-
-        stage('Build React') {
-            steps {
-                dir("${PROJECT_PATH}") {
-                    sh '''
-                        echo "Building React application..."
-                        npm run build
-                    '''
-                }
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                sh '''
-                    echo "Deploying React application..."
-
-                    sudo mkdir -p ${DEPLOY_PATH}
-
-                    sudo rm -rf ${DEPLOY_PATH}/*
-
-                    sudo cp -r ${PROJECT_PATH}/dist/* ${DEPLOY_PATH}/
-
-                    sudo chown -R www-data:www-data ${DEPLOY_PATH}
-
-                    sudo chmod -R 755 ${DEPLOY_PATH}
-
-                    echo "Deployment completed."
-                '''
-            }
-        }
-
-        stage('Nginx Test') {
-            steps {
-                sh '''
-                    sudo nginx -t
-                '''
-            }
-        }
-
-        stage('Reload Nginx') {
-            steps {
-                sh '''
-                    sudo systemctl reload nginx
-                '''
             }
         }
     }
 
     post {
+
         success {
-            echo "======================================"
-            echo "DEPLOYMENT SUCCESSFUL"
-            echo "======================================"
-            echo "Domain: https://test.pinint.com"
-            echo "Path: ${DEPLOY_PATH}"
+            echo '''
+========================================
+        DEPLOYMENT SUCCESSFUL
+========================================
+
+Website:
+https://test.pinint.com
+'''
         }
 
         failure {
-            echo "======================================"
-            echo "DEPLOYMENT FAILED"
-            echo "======================================"
+            echo '''
+========================================
+          DEPLOYMENT FAILED
+========================================
+
+Check the Console Output above.
+'''
         }
     }
 }

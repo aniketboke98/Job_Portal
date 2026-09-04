@@ -5,6 +5,7 @@ pipeline {
         SERVER_IP   = "204.12.199.185"
         SERVER_USER = "administrator"
         DEPLOY_PATH = "/var/www/test.pinint.com"
+        TEMP_PATH   = "/tmp/job-portal-deploy"
     }
 
     stages {
@@ -33,46 +34,95 @@ pipeline {
                     sh '''
                         set -e
 
+                        SERVER="${SERVER_USER}@${SERVER_IP}"
+
+                        echo "======================================"
                         echo "Testing SSH..."
+                        echo "======================================"
+
                         ssh -o StrictHostKeyChecking=no \
-                            ${SERVER_USER}@${SERVER_IP} \
+                            "$SERVER" \
                             "echo SSH OK"
 
-                        echo "Creating deployment directory..."
-                        ssh -o StrictHostKeyChecking=no \
-                            ${SERVER_USER}@${SERVER_IP} \
-                            "sudo mkdir -p ${DEPLOY_PATH}"
+                        echo "======================================"
+                        echo "Creating temporary deployment directory..."
+                        echo "======================================"
 
-                        echo "Removing old files..."
                         ssh -o StrictHostKeyChecking=no \
-                            ${SERVER_USER}@${SERVER_IP} \
-                            "sudo rm -rf ${DEPLOY_PATH}/*"
+                            "$SERVER" \
+                            "rm -rf ${TEMP_PATH} && mkdir -p ${TEMP_PATH}"
 
+                        echo "======================================"
                         echo "Uploading React build..."
+                        echo "======================================"
+
                         scp -o StrictHostKeyChecking=no -r \
                             dist/. \
-                            ${SERVER_USER}@${SERVER_IP}:${DEPLOY_PATH}/
+                            "$SERVER:${TEMP_PATH}/"
 
-                        echo "Fixing permissions..."
+                        echo "======================================"
+                        echo "Creating deployment directory..."
+                        echo "======================================"
+
                         ssh -o StrictHostKeyChecking=no \
-                            ${SERVER_USER}@${SERVER_IP} \
+                            "$SERVER" \
+                            "sudo mkdir -p ${DEPLOY_PATH}"
+
+                        echo "======================================"
+                        echo "Removing old files..."
+                        echo "======================================"
+
+                        ssh -o StrictHostKeyChecking=no \
+                            "$SERVER" \
+                            "sudo rm -rf ${DEPLOY_PATH}/*"
+
+                        echo "======================================"
+                        echo "Installing new build..."
+                        echo "======================================"
+
+                        ssh -o StrictHostKeyChecking=no \
+                            "$SERVER" \
+                            "sudo cp -r ${TEMP_PATH}/. ${DEPLOY_PATH}/"
+
+                        echo "======================================"
+                        echo "Fixing permissions..."
+                        echo "======================================"
+
+                        ssh -o StrictHostKeyChecking=no \
+                            "$SERVER" \
                             "sudo chown -R www-data:www-data ${DEPLOY_PATH}"
 
                         ssh -o StrictHostKeyChecking=no \
-                            ${SERVER_USER}@${SERVER_IP} \
+                            "$SERVER" \
                             "sudo chmod -R 755 ${DEPLOY_PATH}"
 
-                        echo "Testing Nginx..."
+                        echo "======================================"
+                        echo "Cleaning temporary files..."
+                        echo "======================================"
+
                         ssh -o StrictHostKeyChecking=no \
-                            ${SERVER_USER}@${SERVER_IP} \
+                            "$SERVER" \
+                            "rm -rf ${TEMP_PATH}"
+
+                        echo "======================================"
+                        echo "Testing Nginx..."
+                        echo "======================================"
+
+                        ssh -o StrictHostKeyChecking=no \
+                            "$SERVER" \
                             "sudo nginx -t"
 
+                        echo "======================================"
                         echo "Reloading Nginx..."
+                        echo "======================================"
+
                         ssh -o StrictHostKeyChecking=no \
-                            ${SERVER_USER}@${SERVER_IP} \
+                            "$SERVER" \
                             "sudo systemctl reload nginx"
 
+                        echo "======================================"
                         echo "DEPLOYMENT SUCCESSFUL"
+                        echo "======================================"
                     '''
                 }
             }
